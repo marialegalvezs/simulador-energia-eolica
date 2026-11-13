@@ -1,127 +1,111 @@
-"""Modelo físico de la turbina: potencia del viento, disco actuador y dinámica del rotor."""
+"""
+Física del Proyecto 7: potencia del viento, disco actuador (momentum) y giro del rotor.
+
+Ecuación del rotor (segunda ley de Newton para la rotación):
+    J dω/dt = T_viento - T_carga - b ω
+con T_viento = α - γ ω  (por la aproximación parabólica de Cp(λ)) y T_carga = k_g ω.
+"""
 import numpy as np
 
-BETZ_CP = 16 / 27      # coeficiente de potencia máximo (a = 1/3)
-BETZ_CT = 8 / 9        # coeficiente de empuje en el punto de Betz
+BETZ_CP = 16 / 27   # máximo coeficiente de potencia (a = 1/3)
+
+# Caso de estudio del documento (sección 2.7)
+CASO_ESTUDIO = dict(v=10.0, R=2.0, rho=1.225, cp_max=0.45, lam_opt=7.0,
+                    J=15.0, b=0.05, omega0=0.0)
 
 
-# ---------------------------------------------------------------- viento
-def potencia_viento(rho, A, v):
-    """P = 1/2 rho A v^3  [W]"""
-    return 0.5 * rho * A * np.asarray(v, dtype=float) ** 3
+def area(R):
+    return np.pi * R**2
 
 
-def perfil_viento(t, tipo="constante", v0=10.0, dv=2.0, periodo=10.0, t_esc=10.0):
-    """Velocidad del viento v(t) [m/s]."""
-    t = np.asarray(t, dtype=float)
-    if tipo == "escalón":
-        return np.where(t < t_esc, v0, v0 + dv)
-    if tipo == "ráfaga senoidal":
-        return v0 + dv * np.sin(2 * np.pi * t / periodo)
-    return np.full_like(t, v0)
+def potencia_viento(rho, R, v):
+    """P_viento = 1/2 ρ A v³  [W]"""
+    return 0.5 * rho * area(R) * np.asarray(v, dtype=float) ** 3
 
 
-# ------------------------------------------------- disco actuador (momentum)
-def disco_actuador(v_u, a, rho, A):
-    """Teoría de Rankine-Froude: velocidades, flujo de masa, empuje y potencia."""
-    v_r = v_u * (1 - a)              # velocidad en el rotor
-    v_w = v_u * (1 - 2 * a)          # velocidad en la estela lejana
-    m_dot = rho * A * v_r            # flujo de masa [kg/s]
-    F = m_dot * (v_u - v_w)          # empuje = cambio de momentum por segundo [N]
-    P = F * v_r                      # potencia extraída [W]
-    P_energia = 0.5 * m_dot * (v_u**2 - v_w**2)   # comprobación por energía
-    Pv = potencia_viento(rho, A, v_u)
-    return dict(v_r=v_r, v_w=v_w, m_dot=m_dot, F=F, P=P, P_energia=P_energia,
-                Pv=Pv, Cp=P / Pv, CT=F / (0.5 * rho * A * v_u**2))
+def disco_actuador(v1, a, rho, R):
+    """Conservación de masa, impulso-momentum y energía para el factor de inducción a."""
+    vd, v4 = v1 * (1 - a), v1 * (1 - 2 * a)
+    m_dot = rho * area(R) * vd          # masa de aire por segundo [kg/s]
+    F = m_dot * (v1 - v4)               # empuje = cambio de momentum por segundo [N]
+    P = F * vd                          # potencia que recibe el rotor [W]
+    return dict(vd=vd, v4=v4, m_dot=m_dot, F=F, P=P)
 
 
-def cp_de_a(a):
-    return 4 * a * (1 - a) ** 2
-
-
-def ct_de_a(a):
-    return 4 * a * (1 - a)
-
-
-def a_desde_ct(ct):
-    """Invierte C_T = 4a(1-a) (rama a <= 1/2)."""
-    ct = np.clip(np.asarray(ct, dtype=float), 0, 1)
-    return (1 - np.sqrt(1 - ct)) / 2
-
-
-def a_desde_cp(cp, iter_=60):
-    """Invierte C_p = 4a(1-a)^2 en la rama 0 <= a <= 1/3 (bisección)."""
-    cp = np.minimum(np.asarray(cp, dtype=float), BETZ_CP)
+def a_desde_cp(cp):
+    """Invierte Cp = 4a(1-a)² en la rama 0 <= a <= 1/3 (bisección)."""
+    cp = np.clip(np.asarray(cp, dtype=float), 0.0, BETZ_CP)
     lo, hi = np.zeros_like(cp), np.full_like(cp, 1 / 3)
-    for _ in range(iter_):
-        m = (lo + hi) / 2
-        menor = cp_de_a(m) < cp
-        lo, hi = np.where(menor, m, lo), np.where(menor, hi, m)
+    for _ in range(50):
+        mid = (lo + hi) / 2
+        menor = 4 * mid * (1 - mid) ** 2 < cp
+        lo, hi = np.where(menor, mid, lo), np.where(menor, hi, mid)
     return (lo + hi) / 2
 
 
-def velocidad_eje(x, a, R):
-    """Velocidad axial sobre el eje del disco (u/v), x en metros (x<0 aguas arriba)."""
-    return 1 - a * (1 + x / np.sqrt(x**2 + R**2))
-
-
-# --------------------------------------------------------- dinámica del rotor
 def cp_parabolico(lam, cp_max, lam_opt):
+    """Cp(λ) = Cp,max [2λ/λ* - (λ/λ*)²]  (ecuación 10 del documento)."""
     return cp_max * (2 * lam / lam_opt - (lam / lam_opt) ** 2)
 
 
-def coef_torque(rho, R, v, cp_max, lam_opt):
-    """T_turbina = alpha - gamma*omega  (C_p parabólico)."""
-    A = np.pi * R**2
-    alpha = rho * A * R * v**2 * cp_max / lam_opt
-    gamma = 0.5 * rho * A * R**2 * v * cp_max / lam_opt**2
+def coef_torque(p, v):
+    """α y γ de T_viento = α - γ ω  (ecuación 11 del documento)."""
+    A = area(p["R"])
+    alpha = p["rho"] * A * p["R"] * v**2 * p["cp_max"] / p["lam_opt"]
+    gamma = p["rho"] * A * p["R"] ** 2 * v * p["cp_max"] / (2 * p["lam_opt"] ** 2)
     return alpha, gamma
 
 
-def torque_turbina(omega, v, p):
-    alpha, gamma = coef_torque(p["rho"], p["R"], v, p["cp_max"], p["lam_opt"])
-    return alpha - gamma * omega
+def kg_optimo(p, v):
+    """Constante del generador que deja el rotor girando en λ* con el viento v."""
+    alpha, gamma = coef_torque(p, v)
+    w_opt = p["lam_opt"] * v / p["R"]
+    return alpha / w_opt - gamma - p["b"]
 
 
-def torque_carga(omega, p):
-    return p["T0"] + p["kg"] * omega
+def viento(t, p):
+    """Velocidad del viento: constante, o con un cambio brusco (ráfaga) en t_cambio."""
+    t = np.asarray(t, dtype=float)
+    if p.get("rafaga"):
+        return np.where(t < p["t_cambio"], p["v"], p["v2"])
+    return np.full_like(t, p["v"])
 
 
-def f_rotor(t, omega, p, viento):
-    """Lado derecho de J dω/dt = T_turbina - T_carga - b ω."""
-    v = viento(t)
-    return (torque_turbina(omega, v, p) - torque_carga(omega, p) - p["b"] * omega) / p["J"]
+def f_rotor(t, omega, p):
+    """dω/dt = (T_viento - T_carga - b ω) / J"""
+    alpha, gamma = coef_torque(p, float(viento(t, p)))
+    return (alpha - gamma * omega - p["kg"] * omega - p["b"] * omega) / p["J"]
 
 
-def solucion_analitica(t, p, v):
-    """ω(t) = ω∞ + (ω0 - ω∞) e^{-t/τ}  (viento constante)."""
-    alpha, gamma = coef_torque(p["rho"], p["R"], v, p["cp_max"], p["lam_opt"])
+def equilibrio(p, v):
+    """ω∞ = α/K y τ = J/K, con K = γ + k_g + b."""
+    alpha, gamma = coef_torque(p, v)
     K = gamma + p["kg"] + p["b"]
-    w_inf = (alpha - p["T0"]) / K
-    tau = p["J"] / K
-    return w_inf + (p["omega0"] - w_inf) * np.exp(-np.asarray(t) / tau), w_inf, tau
+    return alpha / K, p["J"] / K
 
 
-def kg_optimo(p, v_diseno):
-    """Constante del generador que lleva al rotor a λ* con el viento de diseño."""
-    w_opt = p["lam_opt"] * v_diseno / p["R"]
-    alpha, gamma = coef_torque(p["rho"], p["R"], v_diseno, p["cp_max"], p["lam_opt"])
-    return (alpha - gamma * w_opt - p["T0"]) / w_opt - p["b"]
+def omega_exacta(t, p):
+    """Solución exacta ω(t) = ω∞ + (ω0 - ω∞) e^{-t/τ}; con ráfaga se aplica por tramos."""
+    t = np.asarray(t, dtype=float)
+    w_inf, tau = equilibrio(p, p["v"])
+    w = w_inf + (p["omega0"] - w_inf) * np.exp(-t / tau)
+    if p.get("rafaga"):
+        tc = p["t_cambio"]
+        wc = w_inf + (p["omega0"] - w_inf) * np.exp(-tc / tau)
+        w2, tau2 = equilibrio(p, p["v2"])
+        w = np.where(t < tc, w, w2 + (wc - w2) * np.exp(-(t - tc) / tau2))
+    return w
 
 
-def balance_energia(t, omega, p, viento):
-    """Energías acumuladas: aerodinámica, generador, fricción y cinética (regla del trapecio)."""
-    v = viento(t)
-    P_aero = torque_turbina(omega, v, p) * omega
-    P_gen = torque_carga(omega, p) * omega
-    P_fric = p["b"] * omega**2
-    trap = lambda y: np.concatenate([[0], np.cumsum(0.5 * (y[1:] + y[:-1]) * np.diff(t))])
-    E_aero, E_gen, E_fric = trap(P_aero), trap(P_gen), trap(P_fric)
-    dEk = 0.5 * p["J"] * (omega**2 - omega[0] ** 2)
-    return dict(P_aero=P_aero, P_gen=P_gen, P_fric=P_fric, E_aero=E_aero,
-                E_gen=E_gen, E_fric=E_fric, dEk=dEk)
-
-
-def ajuste_densidad(v, rho, rho_ref=1.225):
-    """Corrección IEC 61400-12-1: velocidad equivalente a la densidad de referencia."""
-    return np.asarray(v) * (rho / rho_ref) ** (1 / 3)
+def estado(t, omega, p):
+    """Todas las magnitudes físicas en cada instante, a partir de ω(t)."""
+    v = viento(t, p)
+    lam = omega * p["R"] / v
+    cp = np.clip(cp_parabolico(lam, p["cp_max"], p["lam_opt"]), 0, None)
+    a = a_desde_cp(cp)
+    disco = disco_actuador(v, a, p["rho"], p["R"])
+    Pv = potencia_viento(p["rho"], p["R"], v)
+    return dict(v=v, lam=lam, cp=cp, a=a, vd=disco["vd"], v4=disco["v4"], F=disco["F"],
+                F_betz=8 / 9 * 0.5 * p["rho"] * area(p["R"]) * v**2,
+                P_viento=Pv, P_betz=BETZ_CP * Pv, P_aero=cp * Pv,
+                P_gen=p["kg"] * omega**2, P_fric=p["b"] * omega**2)

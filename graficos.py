@@ -1,253 +1,276 @@
 """
-Dibujos dinámicos del simulador (SVG + CSS): escena de la turbina, medidores,
-flujo de potencia y cadena de conversión. Todo se genera a partir de las
-variables simuladas, de modo que el dibujo cambia cuando cambian las entradas.
+Dibujo animado del simulador: la situación física (tubo de corriente y rotor que gira)
+sincronizada con la evolución numérica (gráficas de ω(t) y de la potencia).
+
+Todo se dibuja en el navegador (HTML + JavaScript) a partir de los resultados que
+calcula Python; así la animación es fluida y no hay que recalcular nada al reproducir.
 """
-import math
+import json
 import numpy as np
 
-# Paleta neutra
-TINTA = "#2b2d2f"
-GRIS = "#8a8d91"
-GRIS_CLARO = "#d9d9d4"
-FONDO = "#fbfbf9"
-AIRE = "#3a8fa3"        # líneas de viento (azul petróleo suave)
-ACENTO = "#2f5d62"      # valores principales
-BETZ = "#b5543c"        # marca del límite ideal (terracota)
-VERDE = "#5b7f5a"
 
-def _plano(html):
-    """Quita la sangría para que Markdown no lo trate como bloque de código."""
-    return " ".join(l.strip() for l in html.splitlines() if l.strip())
+def _lista(x, dec=5):
+    return [round(float(v), dec) for v in np.asarray(x, dtype=float)]
 
 
-FUENTE = "font-family:'Inter','Segoe UI',Helvetica,Arial,sans-serif"
+def escena(t, w, est, t_eu, w_eu, t_rk, w_rk, R, R_max, h):
+    datos = dict(
+        t=_lista(t, 4), w=_lista(w), v=_lista(est["v"], 3), lam=_lista(est["lam"], 3),
+        cp=_lista(est["cp"], 4), a=_lista(est["a"], 4), vd=_lista(est["vd"], 3),
+        v4=_lista(est["v4"], 3), F=_lista(est["F"], 2), Fb=_lista(est["F_betz"], 2),
+        Pv=_lista(est["P_viento"], 1), Pb=_lista(est["P_betz"], 1),
+        Pa=_lista(est["P_aero"], 1), Pg=_lista(est["P_gen"], 1),
+        teu=_lista(t_eu, 4), weu=_lista(w_eu), trk=_lista(t_rk, 4), wrk=_lista(w_rk),
+        R=float(R), Rmax=float(R_max), h=float(h),
+    )
+    return _PLANTILLA.replace("__DATOS__", json.dumps(datos))
 
 
-def _escala_radio(R, minimo=0.2, maximo=150.0):
-    """Escala logarítmica 0..1 para dibujar radios de 0.2 m a 150 m."""
-    R = min(max(R, minimo), maximo)
-    return (math.log(R) - math.log(minimo)) / (math.log(maximo) - math.log(minimo))
+_PLANTILLA = r"""
+<!doctype html><html><head><meta charset="utf-8">
+<style>
+  :root{--tinta:#2b2d2f;--suave:#6b6e72;--linea:#e3e3de;--fondo:#ffffff;--aire:#3a8fa3;
+        --exacta:#2b2d2f;--euler:#c0603f;--rk4:#3a6ea5;--gen:#2f5d62;--betz:#b5543c}
+  body{margin:0;font-family:"Source Sans Pro",system-ui,sans-serif;color:var(--tinta);background:#fbfbf9}
+  .caja{background:var(--fondo);border:1px solid var(--linea);border-radius:14px;padding:10px 12px;margin-bottom:10px}
+  .tit{font-size:14px;font-weight:600;margin:0 0 4px}
+  .sub{font-size:12.5px;color:var(--suave);margin:0 0 6px}
+  canvas{width:100%;display:block}
+  .controles{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px}
+  button{font:inherit;border:1px solid #c9c9c4;background:#f1f1ed;border-radius:8px;padding:5px 12px;cursor:pointer}
+  button.prim{background:#2f5d62;color:#fff;border-color:#2f5d62}
+  input[type=range]{flex:1;min-width:160px;accent-color:#2f5d62}
+  select{font:inherit;border-radius:6px;padding:3px}
+  .fila{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .datos{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:8px}
+  .dato{background:#f6f6f3;border-radius:10px;padding:6px 8px}
+  .dato b{display:block;font-size:17px;font-weight:600}
+  .dato span{font-size:11.5px;color:var(--suave)}
+  .estado{font-size:13.5px;margin-top:8px;padding:6px 10px;border-radius:8px;background:#eef4f3}
+  .ley{font-size:12px;color:var(--suave);display:flex;gap:14px;flex-wrap:wrap;margin-top:2px}
+  .ley i{display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:4px}
+  @media (max-width:820px){.fila{grid-template-columns:1fr}.datos{grid-template-columns:repeat(3,1fr)}}
+</style></head><body>
 
+<div class="caja">
+  <p class="tit">1. La situación física</p>
+  <p class="sub">Izquierda: el aire (puntos azules) llega con v₁, se frena al pasar por el rotor y sale más lento con v₄;
+  por eso el tubo de aire se ensancha. Derecha: el rotor visto de frente gira con la ω calculada.</p>
+  <canvas id="escena" height="330"></canvas>
+  <div class="controles" style="margin-top:6px">
+    <button id="play" class="prim">▶ Reproducir</button>
+    <button id="reini">↺ Desde t = 0</button>
+    <span>t =</span><input id="barra" type="range" min="0" max="1000" value="0">
+    <span id="treloj" style="min-width:64px;font-weight:600">0.0 s</span>
+    <span>velocidad</span>
+    <select id="vel"><option value="1">×1 (tiempo real)</option><option value="2" selected>×2</option><option value="5">×5</option></select>
+  </div>
+  <div class="datos">
+    <div class="dato"><span>Viento v</span><b id="d_v">–</b></div>
+    <div class="dato"><span>Velocidad angular ω</span><b id="d_w">–</b></div>
+    <div class="dato"><span>Razón de punta λ</span><b id="d_l">–</b></div>
+    <div class="dato"><span>Coef. de potencia Cp</span><b id="d_cp">–</b></div>
+    <div class="dato"><span>Empuje sobre el rotor F</span><b id="d_F">–</b></div>
+    <div class="dato"><span>Potencia del generador</span><b id="d_P">–</b></div>
+  </div>
+  <div class="estado" id="estado">–</div>
+</div>
 
-# -------------------------------------------------------------- escena
-def escena_turbina(R, v1, a, omega=None, F=None, F_betz=None, titulo_extra=""):
-    """
-    Vista lateral (tubo de corriente con conservación de la masa) + vista frontal
-    (rotor que gira con la velocidad angular simulada).
-    """
-    a_d = min(max(a, 0.0), 0.45)
-    vd = v1 * (1 - a_d)
-    v4 = v1 * (1 - 2 * a_d)
-    s = _escala_radio(R)
+<div class="fila">
+  <div class="caja">
+    <p class="tit">2. Evolución numérica: velocidad angular ω(t)</p>
+    <p class="sub">Línea negra: solución exacta. Puntos: Euler y RK4 con el paso h elegido.</p>
+    <canvas id="g1" height="250"></canvas>
+    <div class="ley"><span><i style="background:var(--exacta)"></i>Exacta</span>
+      <span><i style="background:var(--euler)"></i>Euler</span><span><i style="background:var(--rk4)"></i>RK4</span>
+      <span><i style="background:#999;height:1px;border-top:1px dashed #999"></i>ω∞ (equilibrio)</span></div>
+  </div>
+  <div class="caja">
+    <p class="tit">3. Evolución numérica: potencia P(t)</p>
+    <p class="sub">Cuánta potencia trae el viento, el máximo posible (Betz) y lo que entrega el generador.</p>
+    <canvas id="g2" height="250"></canvas>
+    <div class="ley"><span><i style="background:#a3a6a9"></i>Viento ½ρAv³</span>
+      <span><i style="background:var(--betz)"></i>Límite de Betz (59.3 %)</span>
+      <span><i style="background:var(--gen)"></i>Generador k_g ω²</span></div>
+  </div>
+</div>
 
-    # ---------- vista lateral
-    W, H, cy, x0 = 560, 320, 135, 250
-    Rpx = 20 + 46 * s
-    xs = np.linspace(-230, 300, 120)
-    Rf = 1.3 * Rpx  # radio de referencia para el perfil u(x)
-    u = 1 - a_d * (1 + xs / np.sqrt(xs**2 + Rf**2))       # u/v1 sobre el eje
-    r_tubo = np.minimum(Rpx * np.sqrt((1 - a_d) / np.maximum(u, 0.05)), 118)
+<script>
+const D = __DATOS__;
+const N = D.t.length, TF = D.t[N-1];
+const $ = id => document.getElementById(id);
+const fmt = (x, d=1) => x.toLocaleString('es-CO', {minimumFractionDigits:d, maximumFractionDigits:d});
+const potTxt = P => Math.abs(P) >= 1e6 ? fmt(P/1e6,2)+' MW' : (Math.abs(P) >= 1e3 ? fmt(P/1e3,2)+' kW' : fmt(P,0)+' W');
+const fTxt = F => F >= 1e3 ? fmt(F/1e3,2)+' kN' : fmt(F,0)+' N';
 
-    def linea(frac, desde, hasta):
-        m = (xs >= desde) & (xs <= hasta)
-        pts = " ".join(f"{x0 + x:.1f},{cy - frac * r:.1f}" for x, r in zip(xs[m], r_tubo[m]))
-        return pts
+// ------------------------------------------------------------------ utilidades
+function prep(c){ const r = window.devicePixelRatio||1, w = c.clientWidth, h = c.height/(c._r||1);
+  if(!c._h) c._h = c.height; c.width = w*r; c.height = c._h*r; c._r = r;
+  const x = c.getContext('2d'); x.setTransform(r,0,0,r,0,0); return [x, w, c._h]; }
+function interp(arr, t){ const i = Math.min(N-2, Math.max(0, Math.floor(t/TF*(N-1)))); const t0 = D.t[i], t1 = D.t[i+1];
+  const s = t1>t0 ? Math.min(1,Math.max(0,(t-t0)/(t1-t0))) : 0; return arr[i]*(1-s)+arr[i+1]*s; }
+function flecha(x, X, Y, L, col, grosor=2.4){ if(L<2) return; x.strokeStyle=col; x.fillStyle=col; x.lineWidth=grosor;
+  x.beginPath(); x.moveTo(X,Y); x.lineTo(X+L,Y); x.stroke(); x.beginPath(); x.moveTo(X+L+9,Y); x.lineTo(X+L,Y-5); x.lineTo(X+L,Y+5); x.fill(); }
 
-    dur_antes = max(0.25, 6.0 / max(v1, 0.3))
-    dur_despues = max(0.25, 6.0 / max(v4, 0.3))
-    fracs = [-0.85, -0.5, -0.17, 0.17, 0.5, 0.85]
-    lineas = ""
-    for f in fracs:
-        lineas += (f'<polyline points="{linea(f, -230, 0)}" class="aire" '
-                   f'style="animation-duration:{dur_antes:.2f}s"/>')
-        lineas += (f'<polyline points="{linea(f, 0, 300)}" class="aire" '
-                   f'style="animation-duration:{dur_despues:.2f}s"/>')
-    borde_sup = " ".join(f"{x0 + x:.1f},{cy - r:.1f}" for x, r in zip(xs, r_tubo))
-    borde_inf = " ".join(f"{x0 + x:.1f},{cy + r:.1f}" for x, r in zip(xs, r_tubo))
+// ------------------------------------------------------------------ escena
+const cE = $('escena');
+let parts = [];
+for(let k=0;k<90;k++) parts.push({x:Math.random(), f:(Math.random()*2-1)*0.92});
+let theta = 0;
+const vmaxAll = Math.max(...D.v);
+const wmax = Math.max(1e-6, ...D.w);
 
-    def flecha(x, y, largo, color, grosor=2.2):
-        largo = max(largo, 6)
-        return (f'<line x1="{x}" y1="{y}" x2="{x + largo}" y2="{y}" stroke="{color}" stroke-width="{grosor}"/>'
-                f'<polygon points="{x + largo},{y - 5} {x + largo + 9},{y} {x + largo},{y + 5}" fill="{color}"/>')
+function escena(t, dtReal, vel){
+  const [x, W, H] = prep(cE);
+  x.clearRect(0,0,W,H);
+  const v = interp(D.v,t), a = interp(D.a,t), w = interp(D.w,t), F = interp(D.F,t), Fb = interp(D.Fb,t);
+  const vd = v*(1-a), v4 = v*(1-2*a);
+  // --- vista lateral
+  const WL = W*0.64, x0 = WL*0.40, cy = 140;
+  const Rpx = 22 + 70*(D.R/D.Rmax);            // el dibujo crece con R
+  const pxm = Rpx/D.R;                           // píxeles por metro
+  const u = X => 1 - a*(1 + X/Math.sqrt(X*X + D.R*D.R));     // v(x)/v1 sobre el eje
+  const rt = X => D.R*Math.sqrt((1-a)/u(X))*pxm;               // radio del tubo (masa constante)
+  // suelo
+  x.fillStyle='#f3f1ea'; x.fillRect(0,H-38,W,38);
+  // tubo
+  x.fillStyle='rgba(58,143,163,0.08)'; x.strokeStyle='rgba(58,143,163,0.55)'; x.lineWidth=1.4;
+  x.beginPath(); for(let px=10;px<=WL-10;px+=4){ const X=(px-x0)/pxm; x.lineTo(px, cy-rt(X)); }
+  for(let px=WL-10;px>=10;px-=4){ const X=(px-x0)/pxm; x.lineTo(px, cy+rt(X)); } x.closePath(); x.fill(); x.stroke();
+  // partículas de aire
+  const k = 130/Math.max(vmaxAll,1);           // px/s por m/s
+  x.fillStyle='#3a8fa3';
+  for(const p of parts){ const px = 10 + p.x*(WL-20); const X=(px-x0)/pxm;
+    p.x += u(X)*v*k*dtReal*vel/4/(WL-20); if(p.x>1){p.x-=1; p.f=(Math.random()*2-1)*0.92;}
+    x.beginPath(); x.arc(px, cy + p.f*rt(X), 2.1, 0, 7); x.fill(); }
+  // torre y rotor lateral
+  x.fillStyle='#9a9c9f'; x.fillRect(x0-3, cy, 6, H-38-cy);
+  x.fillStyle='#4a4d50'; x.fillRect(x0-2, cy-Rpx, 5, 2*Rpx);
+  x.fillStyle='#6b6e72'; x.beginPath(); x.ellipse(x0+12, cy, 16, 7, 0, 0, 7); x.fill();
+  // empuje sobre el rotor
+  const LF = 60*F/Math.max(Fb,1);
+  flecha(x, x0+30, cy-Rpx-14, LF, '#b5543c', 3);
+  x.fillStyle='#b5543c'; x.font='600 12px sans-serif'; x.fillText('Empuje F = '+fTxt(F), x0+30, cy-Rpx-24);
+  // flechas de velocidad (proporcionales)
+  const kv = 60/Math.max(vmaxAll,1), yb = H-52;
+  x.font='12px sans-serif';
+  [[18, v, 'antes  v₁ = '], [x0+12, vd, 'en el rotor  v_d = '], [WL-185, v4, 'después  v₄ = ']].forEach(([X0,val,txt])=>{
+    flecha(x, X0, yb, val*kv, '#2b2d2f', 2); x.fillStyle='#2b2d2f'; x.fillText(txt+fmt(val,1)+' m/s', X0, yb-9); });
+  x.fillStyle='#6b6e72'; x.font='12px sans-serif';
+  x.fillText('Viento →', 14, 22); x.fillText('R = '+fmt(D.R,1)+' m', x0+8, cy+Rpx+14);
+  x.fillText('a = '+fmt(a,3)+' (cuánto se frena el aire)', WL-215, 22);
+  // separador
+  x.strokeStyle='#e3e3de'; x.lineWidth=1; x.beginPath(); x.moveTo(WL,10); x.lineTo(WL,H-44); x.stroke();
+  // --- vista frontal
+  const xf = WL + (W-WL)/2, cf = 140;
+  const lento = Math.max(1, Math.ceil(wmax*vel/5));    // cámara lenta para que el giro se vea
+  theta += w*dtReal*vel/lento;
+  x.fillStyle='#9a9c9f'; x.fillRect(xf-3, cf, 6, H-66-cf);
+  x.strokeStyle='rgba(43,45,47,0.12)'; x.setLineDash([3,4]); x.beginPath(); x.arc(xf,cf,Rpx,0,7); x.stroke(); x.setLineDash([]);
+  for(let b=0;b<3;b++){ const ang = theta + b*2*Math.PI/3;
+    x.save(); x.translate(xf,cf); x.rotate(ang); x.fillStyle='#4a4d50';
+    x.beginPath(); x.moveTo(0,-4); x.quadraticCurveTo(Rpx*0.35,-9,Rpx,-2); x.lineTo(Rpx,2); x.quadraticCurveTo(Rpx*0.35,5,0,4); x.fill(); x.restore(); }
+  x.fillStyle='#2f5d62'; x.beginPath(); x.arc(xf,cf,7,0,7); x.fill();
+  x.fillStyle='#2b2d2f'; x.font='600 13px sans-serif'; x.textAlign='center';
+  x.fillText('ω = '+fmt(w,1)+' rad/s  ('+fmt(w*60/(2*Math.PI),0)+' rpm)', xf, 22);
+  x.fillStyle='#6b6e72'; x.font='11.5px sans-serif';
+  x.fillText(lento>1 ? 'giro mostrado '+lento+' veces más lento' : 'giro en tiempo real', xf, 38);
+  // generador: barra de potencia
+  const Pg = interp(D.Pg,t), Pv = interp(D.Pv,t), Pb = interp(D.Pb,t);
+  const bx = WL+16, bw = W-WL-32, by = H-30;
+  x.textAlign='left'; x.fillStyle='#e9e9e4'; x.fillRect(bx,by,bw,10);
+  x.fillStyle='#2f5d62'; x.fillRect(bx,by,bw*Math.max(0,Math.min(1,Pg/Pv)),10);
+  x.strokeStyle='#b5543c'; x.lineWidth=2; x.beginPath(); x.moveTo(bx+bw*Pb/Pv,by-4); x.lineTo(bx+bw*Pb/Pv,by+14); x.stroke();
+  x.fillStyle='#2b2d2f'; x.font='12px sans-serif';
+  x.fillText('Generador: '+potTxt(Pg)+' = '+fmt(100*Pg/Pv,0)+' % del viento', bx, by-6);
+  x.fillStyle='#b5543c'; x.fillText('límite de Betz', bx+bw*Pb/Pv+4, by+21);
+}
 
-    k = 70 / 25.0  # px por m/s
-    yb = H - 22
-    flechas = (flecha(x0 - 225, yb, v1 * k, TINTA) +
-               flecha(x0 - vd * k / 2 - 4, yb, vd * k, TINTA) +
-               flecha(x0 + 200, yb, v4 * k, TINTA))
-    etiquetas = (
-        f'<text x="{x0 - 225}" y="{yb - 10}" class="et">antes: v₁ = {v1:.1f} m/s</text>'
-        f'<text x="{x0}" y="{yb - 10}" class="et" text-anchor="middle">en el rotor: {vd:.1f} m/s</text>'
-        f'<text x="{x0 + 200}" y="{yb - 10}" class="et">estela: v₄ = {v4:.1f} m/s</text>'
-        f'<line x1="8" y1="{yb - 28}" x2="{W - 8}" y2="{yb - 28}" stroke="#eeeeea"/>'
-        f'<text x="{x0 - 215}" y="{cy - r_tubo[0] - 6:.0f}" class="et2">A₁ (entrada)</text>'
-        f'<text x="{x0 + 8}" y="{cy - Rpx - 6:.0f}" class="et2">A (rotor)</text>'
-        f'<text x="{x0 + 200}" y="{max(cy - r_tubo[-1] - 6, 30):.0f}" class="et2">A₄ (estela)</text>')
-    empuje = ""
-    if F is not None and F_betz:
-        L = 18 + 60 * min(F / F_betz, 1.2)
-        empuje = (f'<line x1="{x0 + 14}" y1="{cy + 22}" x2="{x0 + 14 + L}" y2="{cy + 22}" stroke="{BETZ}" stroke-width="3"/>'
-                  f'<polygon points="{x0 + 14 + L},{cy + 16} {x0 + 26 + L},{cy + 22} {x0 + 14 + L},{cy + 28}" fill="{BETZ}"/>'
-                  f'<text x="{x0 + 16}" y="{cy + 42}" class="et" fill="{BETZ}">empuje F</text>')
-    torre = (f'<rect x="{x0 - 3}" y="{cy}" width="6" height="{H - cy - 50}" fill="#c9cac6"/>'
-             f'<ellipse cx="{x0 + 14}" cy="{cy}" rx="22" ry="9" fill="#e9e9e5" stroke="{GRIS}" stroke-width="1"/>'
-             f'<line x1="{x0}" y1="{cy - Rpx}" x2="{x0}" y2="{cy + Rpx}" stroke="{TINTA}" stroke-width="5" stroke-linecap="round"/>'
-             f'<circle cx="{x0}" cy="{cy}" r="6" fill="{TINTA}"/>')
-    lateral = f"""
-    <svg viewBox="0 0 {W} {H}" width="100%" style="max-width:{W}px">
-      <polyline points="{borde_sup}" fill="none" stroke="{GRIS}" stroke-width="1.2" stroke-dasharray="4 4"/>
-      <polyline points="{borde_inf}" fill="none" stroke="{GRIS}" stroke-width="1.2" stroke-dasharray="4 4"/>
-      {lineas}{torre}{flechas}{empuje}{etiquetas}
-      <text x="8" y="18" class="tit">Vista lateral · el aire se frena y el tubo se ensancha</text>
-    </svg>"""
+// ------------------------------------------------------------------ gráficas
+function ejes(x, W, H, xmax, ymin, ymax, ylab){
+  const m = {l:52, r:12, t:10, b:34}; const pw = W-m.l-m.r, ph = H-m.t-m.b;
+  const X = t => m.l + t/xmax*pw, Y = y => m.t + (1-(y-ymin)/(ymax-ymin))*ph;
+  x.strokeStyle='#ececE7'; x.fillStyle='#6b6e72'; x.font='11px sans-serif'; x.lineWidth=1;
+  const paso = (r => { const p = Math.pow(10, Math.floor(Math.log10(r/5))); return [1,2,5,10].map(k=>k*p).find(s=>r/s<=6); });
+  const sy = paso(ymax-ymin), sx = paso(xmax);
+  x.textAlign='right';
+  for(let y=Math.ceil(ymin/sy)*sy; y<=ymax+1e-9; y+=sy){ x.beginPath(); x.moveTo(m.l,Y(y)); x.lineTo(W-m.r,Y(y)); x.stroke(); x.fillText(fmt(y, sy<1?1:0), m.l-5, Y(y)+4); }
+  x.textAlign='center';
+  for(let s=0; s<=xmax+1e-9; s+=sx){ x.beginPath(); x.moveTo(X(s),m.t); x.lineTo(X(s),H-m.b); x.stroke(); x.fillText(fmt(s,0), X(s), H-m.b+14); }
+  x.fillText('tiempo t (s)', m.l+pw/2, H-4);
+  x.save(); x.translate(12, m.t+ph/2); x.rotate(-Math.PI/2); x.fillText(ylab, 0, 0); x.restore();
+  x.textAlign='left';
+  return {X, Y, m, pw, ph};
+}
+function linea(x, A, tt, yy, col, ancho=2, guiones=null){ x.strokeStyle=col; x.lineWidth=ancho; if(guiones) x.setLineDash(guiones);
+  x.beginPath(); for(let i=0;i<tt.length;i++){ const px=A.X(tt[i]), py=A.Y(yy[i]); i?x.lineTo(px,py):x.moveTo(px,py);} x.stroke(); x.setLineDash([]); }
+function puntos(x, A, tt, yy, col, ymin, ymax){ x.fillStyle=col; x.strokeStyle=col; x.lineWidth=1.2;
+  const ok = y => isFinite(y) && y>=ymin && y<=ymax;
+  x.beginPath(); for(let i=0;i<tt.length;i++){ if(!ok(yy[i])) continue; const px=A.X(tt[i]), py=A.Y(yy[i]);
+    (i>0 && ok(yy[i-1])) ? x.lineTo(px,py) : x.moveTo(px,py); } x.stroke();
+  const r = tt.length > 150 ? 1.6 : 3.2;
+  for(let i=0;i<tt.length;i++){ if(!ok(yy[i])) continue; x.beginPath(); x.arc(A.X(tt[i]),A.Y(yy[i]),r,0,7); x.fill(); }
+  return yy.some(y => !ok(y)); }
+function cursor(x, A, t, H){ x.strokeStyle='rgba(47,93,98,0.6)'; x.lineWidth=1.5; x.setLineDash([4,3]);
+  x.beginPath(); x.moveTo(A.X(t),A.m.t); x.lineTo(A.X(t),H-A.m.b); x.stroke(); x.setLineDash([]); }
 
-    # ---------- vista frontal
-    W2, H2 = 300, 300
-    cx, cyf = 150, 128
-    L = 40 + 82 * s
-    if omega is None:
-        periodo, nota = 4.0, "giro ilustrativo"
-    else:
-        periodo = 2 * math.pi / max(abs(omega), 1e-3)
-        nota = f"{omega:.2f} rad/s · {omega * 30 / math.pi:.0f} rpm"
-        periodo = min(max(periodo, 0.45), 30.0)
-    parado = omega is not None and abs(omega) < 1e-3
-    aspa = (f'<path d="M -5 -8 C -9 -{L * 0.35:.0f}, -6 -{L * 0.8:.0f}, -1.5 -{L:.0f} '
-            f'L 1.5 -{L:.0f} C 6 -{L * 0.8:.0f}, 9 -{L * 0.35:.0f}, 5 -8 Z" fill="#f2f2ef" stroke="{GRIS}" stroke-width="1"/>')
-    rotor = "".join(f'<g transform="rotate({ang})">{aspa}</g>' for ang in (0, 120, 240))
-    anim = "" if parado else f"animation: giro {periodo:.2f}s linear infinite;"
-    frontal = f"""
-    <svg viewBox="0 0 {W2} {H2}" width="100%" style="max-width:{W2}px">
-      <circle cx="{cx}" cy="{cyf}" r="{L + 4:.0f}" fill="none" stroke="{GRIS_CLARO}" stroke-dasharray="3 5"/>
-      <path d="M {cx - 5} {cyf + 6} L {cx - 9} {H2 - 22} L {cx + 9} {H2 - 22} L {cx + 5} {cyf + 6} Z" fill="#dcdcd8"/>
-      <g transform="translate({cx},{cyf})"><g style="{anim} transform-origin: 0 0;">{rotor}</g>
-      <circle r="9" fill="#e9e9e5" stroke="{GRIS}"/></g>
-      <line x1="{cx}" y1="{cyf}" x2="{cx + L:.0f}" y2="{cyf}" stroke="{BETZ}" stroke-width="1" stroke-dasharray="2 3"/>
-      <text x="{cx + L / 2:.0f}" y="{cyf - 5}" class="et" fill="{BETZ}" text-anchor="middle">R = {R:g} m</text>
-      <text x="{cx}" y="{H2 - 6}" class="et2" text-anchor="middle">{nota}</text>
-      <text x="8" y="18" class="tit">Vista frontal · rotor</text>
-    </svg>"""
+const wTop = 1.25*Math.max(...D.w);
+const winf_final = D.w[N-1];
+function grafica1(t){
+  const c = $('g1'); const [x, W, H] = prep(c); x.clearRect(0,0,W,H);
+  const A = ejes(x, W, H, TF, 0, wTop, 'ω (rad/s)');
+  linea(x, A, [0,TF], [winf_final,winf_final], '#999', 1, [5,4]);
+  const fueraE = puntos(x, A, D.teu, D.weu, '#c0603f', -0.05*wTop, wTop);
+  const fueraR = puntos(x, A, D.trk, D.wrk, '#3a6ea5', -0.05*wTop, wTop);
+  linea(x, A, D.t, D.w, '#2b2d2f', 2);
+  const fuera = [fueraE?'Euler':'', fueraR?'RK4':''].filter(Boolean).join(' y ');
+  if(fuera){ x.fillStyle='#c0603f'; x.font='600 12px sans-serif'; x.fillText(fuera+' se sale de la gráfica: es inestable con este paso h', A.m.l+8, A.m.t+14); }
+  cursor(x, A, t, H);
+  x.fillStyle='#2b2d2f'; x.beginPath(); x.arc(A.X(t), A.Y(interp(D.w,t)), 4.5, 0, 7); x.fill();
+}
+const pTop = 1.12*Math.max(...D.Pv);
+const esc = pTop >= 3e6 ? [1e6,'MW'] : (pTop >= 3e3 ? [1e3,'kW'] : [1,'W']);
+function grafica2(t){
+  const c = $('g2'); const [x, W, H] = prep(c); x.clearRect(0,0,W,H);
+  const s = a => a.map(p => p/esc[0]);
+  const A = ejes(x, W, H, TF, 0, pTop/esc[0], 'P ('+esc[1]+')');
+  linea(x, A, D.t, s(D.Pv), '#a3a6a9', 2, [6,4]);
+  linea(x, A, D.t, s(D.Pb), '#b5543c', 1.6, [3,3]);
+  linea(x, A, D.t, s(D.Pg), '#2f5d62', 2.4);
+  cursor(x, A, t, H);
+  x.fillStyle='#2f5d62'; x.beginPath(); x.arc(A.X(t), A.Y(interp(D.Pg,t)/esc[0]), 4.5, 0, 7); x.fill();
+}
 
-    return f"""
-    <html><head><style>
-      body {{ margin:0; background:{FONDO}; {FUENTE}; }}
-      .fila {{ display:flex; gap:14px; align-items:flex-start; justify-content:space-between; }}
-      .panel {{ background:#ffffff; border:1px solid #e6e6e1; border-radius:14px; padding:6px; }}
-      .aire {{ fill:none; stroke:{AIRE}; stroke-width:1.8; stroke-dasharray:7 9; opacity:.85;
-               animation-name: fluye; animation-timing-function: linear; animation-iteration-count: infinite; }}
-      @keyframes fluye {{ from {{ stroke-dashoffset: 32; }} to {{ stroke-dashoffset: 0; }} }}
-      @keyframes giro {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
-      .et {{ font-size:12px; fill:{TINTA}; }} .et2 {{ font-size:11px; fill:{GRIS}; }}
-      .tit {{ font-size:12px; fill:{GRIS}; letter-spacing:.3px; }}
-    </style></head><body>
-      <div class="fila"><div class="panel" style="flex:2">{lateral}</div>
-      <div class="panel" style="flex:1">{frontal}</div></div>
-      <div style="font-size:11px;color:{GRIS};margin-top:4px">{titulo_extra}</div>
-    </body></html>"""
+// ------------------------------------------------------------------ datos y estado
+function tablero(t){
+  const v=interp(D.v,t), w=interp(D.w,t), l=interp(D.lam,t), cp=interp(D.cp,t), F=interp(D.F,t), Pg=interp(D.Pg,t);
+  $('d_v').textContent = fmt(v,1)+' m/s'; $('d_w').textContent = fmt(w,2)+' rad/s';
+  $('d_l').textContent = fmt(l,2); $('d_cp').textContent = fmt(cp,3);
+  $('d_F').textContent = fTxt(F); $('d_P').textContent = potTxt(Pg);
+  $('treloj').textContent = fmt(t,1)+' s';
+  // ¿acelera o está en equilibrio?
+  const i = Math.min(N-2, Math.floor(t/TF*(N-1))); const dw = (D.w[i+1]-D.w[i])/(D.t[i+1]-D.t[i]);
+  let txt;
+  if (Math.abs(dw) < 0.01*Math.max(1e-6, Math.abs(w))) txt = '⚖️ <b>Equilibrio:</b> el torque del viento es igual al del generador más la fricción, así que ω ya no cambia (ω ≈ ω∞).';
+  else if (dw > 0) txt = '⬆️ <b>El rotor acelera:</b> el torque del viento es mayor que el del generador más la fricción (J dω/dt > 0).';
+  else txt = '⬇️ <b>El rotor frena:</b> el torque del generador más la fricción es mayor que el del viento (J dω/dt < 0).';
+  $('estado').innerHTML = txt;
+}
 
-
-# ------------------------------------------------------------ medidores
-def medidor(titulo, valor, maximo, unidad, decimales=1, marca=None, marca_txt="", subtitulo=""):
-    """Medidor semicircular (SVG). 'marca' dibuja una línea de referencia (p. ej., Betz)."""
-    maximo = max(maximo, 1e-12)
-    f = min(max(valor / maximo, 0.0), 1.0)
-    cx, cy, r = 100, 108, 72
-
-    def punto(fr, rr=r):
-        th = math.pi * (1 - fr)
-        return cx + rr * math.cos(th), cy - rr * math.sin(th)
-
-    x0, y0 = punto(0); x1, y1 = punto(f); xe, ye = punto(1)
-    arco_fondo = f'<path d="M {x0:.1f} {y0:.1f} A {r} {r} 0 0 1 {xe:.1f} {ye:.1f}" stroke="#ecece8" stroke-width="13" fill="none" stroke-linecap="round"/>'
-    arco_val = (f'<path d="M {x0:.1f} {y0:.1f} A {r} {r} 0 0 1 {x1:.1f} {y1:.1f}" stroke="{ACENTO}" stroke-width="13" '
-                f'fill="none" stroke-linecap="round"/>' if f > 0.002 else "")
-    ticks = ""
-    for i in range(11):
-        xa, ya = punto(i / 10, r + 10); xb, yb = punto(i / 10, r + 15 if i % 5 == 0 else r + 12)
-        ticks += f'<line x1="{xa:.1f}" y1="{ya:.1f}" x2="{xb:.1f}" y2="{yb:.1f}" stroke="#c7c7c2" stroke-width="1"/>'
-    m = ""
-    if marca is not None and 0 < marca / maximo <= 1:
-        fm = marca / maximo
-        xa, ya = punto(fm, r - 11); xb, yb = punto(fm, r + 12); xt, yt = punto(fm, r + 24)
-        m = (f'<line x1="{xa:.1f}" y1="{ya:.1f}" x2="{xb:.1f}" y2="{yb:.1f}" stroke="{BETZ}" stroke-width="2.4"/>'
-             f'<text x="{xt:.1f}" y="{yt:.1f}" font-size="9.5" fill="{BETZ}" text-anchor="middle">{marca_txt}</text>')
-    xa, ya = punto(f, r - 22)
-    aguja = (f'<line x1="{cx}" y1="{cy}" x2="{xa:.1f}" y2="{ya:.1f}" stroke="{TINTA}" stroke-width="2.2" stroke-linecap="round"/>'
-             f'<circle cx="{cx}" cy="{cy}" r="4.5" fill="{TINTA}"/>')
-    txt = f"{valor:,.{decimales}f}".replace(",", " ")
-    return _plano(f"""
-    <div style="background:#fff;border:1px solid #e6e6e1;border-radius:14px;padding:8px 6px 6px;text-align:center;{FUENTE}">
-      <div style="font-size:12.5px;color:{GRIS};letter-spacing:.3px">{titulo}</div>
-      <svg viewBox="0 0 200 140" width="100%" style="max-width:220px">
-        {ticks}{arco_fondo}{arco_val}{m}{aguja}
-        <text x="100" y="135" font-size="19" fill="{TINTA}" text-anchor="middle" font-weight="600">{txt}
-          <tspan font-size="11" fill="{GRIS}" font-weight="400"> {unidad}</tspan></text>
-      </svg>
-      <div style="font-size:11px;color:{GRIS};min-height:14px">{subtitulo}</div>
-    </div>""")
-
-
-def fila_medidores(lista):
-    celdas = "".join(f'<div style="flex:1;min-width:150px">{m}</div>' for m in lista)
-    return _plano(f'<div style="display:flex;gap:10px;flex-wrap:wrap">{celdas}</div>')
-
-
-# ------------------------------------------------------- flujo de potencia
-
-
-def flujo_potencia(etapas):
-    """etapas: lista de (nombre, potencia_W, color, comentario). La primera es el 100 %."""
-    total = max(etapas[0][1], 1e-12)
-    filas = ""
-    for nombre, P, color, com in etapas:
-        pct = 100 * P / total
-        filas += f"""
-        <div style="display:flex;align-items:center;gap:10px;margin:5px 0">
-          <div style="width:210px;font-size:12.5px;color:{TINTA}">{nombre}</div>
-          <div style="flex:1;background:#f0f0ec;border-radius:7px;height:18px;position:relative">
-            <div style="width:{max(min(pct, 100), 0):.2f}%;background:{color};height:18px;border-radius:7px"></div></div>
-          <div style="width:150px;font-size:12.5px;color:{TINTA};text-align:right">
-            {P / 1e3:,.2f} kW · <b>{pct:.1f} %</b></div>
-        </div>
-        <div style="margin:-3px 0 4px 220px;font-size:10.5px;color:{GRIS}">{com}</div>"""
-    return _plano((f'<div style="background:#fff;border:1px solid #e6e6e1;border-radius:14px;padding:10px 14px;{FUENTE}">'
-            f'<div style="font-size:12.5px;color:{GRIS};margin-bottom:4px">¿A dónde va la potencia del viento?</div>{filas}</div>'))
-
-
-# ---------------------------------------------------- cadena de conversión
-
-
-def cadena_conversion(v, omega, T_viento, T_gen, P_viento, P_aero, P_gen, P_fric):
-    """Diagrama de bloques viento → rotor → eje → generador → red, con valores actuales."""
-    def caja(x, titulo, l1, l2, icono):
-        return f"""
-        <g transform="translate({x},30)">
-          <rect width="150" height="96" rx="12" fill="#fff" stroke="#dcdcd6"/>
-          <text x="75" y="22" text-anchor="middle" font-size="12.5" fill="{GRIS}">{titulo}</text>
-          <text x="75" y="52" text-anchor="middle" font-size="22" fill="#2f5d62">{icono}</text>
-          <text x="75" y="72" text-anchor="middle" font-size="11.5" fill="{TINTA}">{l1}</text>
-          <text x="75" y="88" text-anchor="middle" font-size="11.5" fill="{TINTA}">{l2}</text>
-        </g>"""
-
-    def flecha(x, txt):
-        return (f'<line x1="{x}" y1="78" x2="{x + 34}" y2="78" stroke="{GRIS}" stroke-width="2"/>'
-                f'<polygon points="{x + 34},73 {x + 42},78 {x + 34},83" fill="{GRIS}"/>'
-                f'<text x="{x + 21}" y="66" text-anchor="middle" font-size="8.5" fill="{AIRE}">{txt}</text>')
-
-    x = [0, 196, 392, 588, 784]
-    return _plano(f"""
-    <div style="background:#fff;border:1px solid #e6e6e1;border-radius:14px;padding:8px;{FUENTE}">
-    <div style="font-size:12.5px;color:{GRIS};padding-left:6px">Cadena de conversión en el instante elegido</div>
-    <svg viewBox="0 0 940 140" width="100%">
-      {caja(x[0], "Viento", f"v = {v:.1f} m/s", f"{P_viento / 1e3:,.2f} kW", "≋")}
-      {flecha(154, "momentum")}
-      {caja(x[1], "Rotor (aspas)", f"T viento = {T_viento:,.1f} N·m", f"{P_aero / 1e3:,.2f} kW", "✢")}
-      {flecha(350, "torque")}
-      {caja(x[2], "Eje y rodamientos", f"ω = {omega:.2f} rad/s", f"fricción {P_fric / 1e3:,.3f} kW", "◎")}
-      {flecha(546, "giro")}
-      {caja(x[3], "Generador", f"T generador = {T_gen:,.1f} N·m", f"{P_gen / 1e3:,.2f} kW", "ϟ")}
-      {flecha(742, "electricidad")}
-      {caja(x[4], "Red eléctrica", "potencia entregada", f"{P_gen / 1e3:,.2f} kW", "⌂")}
-    </svg></div>""")
-
+// ------------------------------------------------------------------ reproducción
+let t = 0, corriendo = true, ultimo = null;
+const barra = $('barra'), bPlay = $('play');
+function pintar(dt){ const vel = +$('vel').value; escena(t, dt, vel); grafica1(t); grafica2(t); tablero(t); barra.value = Math.round(1000*t/TF); }
+function cuadro(ts){
+  const dt = ultimo===null ? 0 : Math.min(0.05,(ts-ultimo)/1000); ultimo = ts;
+  if(corriendo){ t += dt*(+$('vel').value); if(t>=TF){ t=TF; corriendo=false; bPlay.textContent='▶ Reproducir'; } }
+  pintar(dt); requestAnimationFrame(cuadro);
+}
+bPlay.onclick = () => { if(t>=TF) t=0; corriendo=!corriendo; bPlay.textContent = corriendo ? '⏸ Pausa' : '▶ Reproducir'; };
+$('reini').onclick = () => { t=0; corriendo=true; bPlay.textContent='⏸ Pausa'; };
+barra.oninput = () => { t = barra.value/1000*TF; corriendo=false; bPlay.textContent='▶ Reproducir'; };
+window.irA = s => { t = s; corriendo=false; bPlay.textContent='▶ Reproducir'; };
+bPlay.textContent='⏸ Pausa';
+requestAnimationFrame(cuadro);
+</script></body></html>
+"""

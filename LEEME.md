@@ -1,5 +1,10 @@
 # Simulador eólico — Proyecto 7 (G3)
 
+Simulador de la turbina del caso de estudio: muestra **la situación física** (el aire que se frena en
+un tubo que se ensancha y el rotor que gira) **junto con su evolución numérica** (gráficas de ω(t) con la
+solución exacta, Euler y RK4, y de la potencia). Cada parámetro que se cambia se ve en el dibujo y en las
+gráficas al mismo tiempo.
+
 ## Cómo ejecutarlo
 
 1. Instale Python 3.10 o una versión posterior.
@@ -10,24 +15,40 @@ python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-En Windows use `python -m streamlit ...` (o `py -m streamlit ...`), porque el comando `streamlit` solo no suele estar en el PATH.
+3. Se abre en el navegador, en http://localhost:8501.
 
-3. El simulador se abre en el navegador, en http://localhost:8501.
+## Cómo usarlo
+
+1. A la izquierda cambie el viento, el radio de las aspas, el momento de inercia o el paso h.
+2. Presione **▶ Reproducir**: el rotor arranca desde el reposo, el aire se frena cada vez más y los
+   puntos negros recorren las gráficas al mismo tiempo. Con la barra `t` puede ir a cualquier instante.
+3. Abajo compare Euler y RK4 con la solución exacta (errores absoluto y relativo, y tabla por paso h).
+
+El botón **Volver al caso de estudio del documento** restablece los valores del documento
+(ρ = 1.225 kg/m³, R = 2 m, v = 10 m/s, Cp,máx = 0.45, λ* = 7, J = 15 kg·m², b = 0.05 N·m·s,
+k_g ≈ 2.777 N·m·s, ω₀ = 0, h = 1 s, 30 s). Con ellos el simulador da ω∞ = 35.0 rad/s (334 rpm),
+τ = 2.65 s, 3.40 kW en el generador y, en t = 4 s, ω exacta = 27.2524 rad/s y los errores de la tabla de errores del documento.
+
+## Parámetros
+
+| Grupo | Parámetro | Qué se ve al cambiarlo |
+|---|---|---|
+| Viento | v (m/s) | Los puntos de aire van más rápido, las flechas v₁, v_d, v₄ crecen, sube la potencia (∝ v³) |
+| Viento | Ráfaga (opcional) | El viento cambia de golpe; el rotor se acelera hasta un nuevo equilibrio |
+| Turbina | R (m) | El rotor y el tubo de aire se dibujan más grandes; más área A = πR² |
+| Turbina | J (kg·m²) | El rotor tarda más en arrancar (τ = J/K crece) |
+| Turbina | k_g (N·m·s) | Por defecto se ajusta solo para trabajar en λ* = 7; si se desmarca, más carga = gira más lento |
+| Numérico | h (s) | Cambian los puntos de Euler y RK4; con h > 2τ Euler se vuelve inestable |
+| Numérico | Duración (s) | Largo de las gráficas |
+
+ρ, Cp,máx, λ*, b y ω₀ están en "Otros valores" porque en el documento son fijos.
 
 ## Archivos
 
-| Archivo | Qué contiene | Pareja |
-|---|---|---|
-| `modelo.py` | Física: potencia del viento, disco actuador (momentum), Cp(λ), torques, EDO del rotor, solución exacta y balance de energía | Equipo 1 |
-| `metodos.py` | Euler y RK4 programados a mano, errores y orden de convergencia | Equipo 2 |
-| `datos.py` | Curvas reales de potencia y de CT de las turbinas Vestas V52, Vestas V80 y Siemens SWT-2.3-93, y la tabla del artículo de Visión Académica | Equipo 3 |
-| `graficos.py` | Dibujos animados: tubo de corriente, rotor que gira, medidores, flujo de potencia y cadena de conversión | Equipo 3 |
-| `app.py` | Interfaz con cuatro pestañas | Equipo 3 |
-| `.streamlit/config.toml` | Colores neutros de la interfaz | Equipo 3 |
-
-## Pestañas
-
-1. **Momentum:** al cambiar el viento, el radio o el factor de inducción, el dibujo se actualiza. El tubo de aire se ensancha, las líneas de viento se frenan detrás del rotor y las aspas crecen con R. Los medidores muestran la potencia, el Cp, el empuje y el flujo de masa, cada uno con su marca del límite de Betz.
-2. **Turbinas reales frente al ideal de Betz:** se elige la turbina y la velocidad del viento. Se ven los medidores, el gráfico "¿a dónde va la potencia del viento?", las curvas y la tabla completa, que se puede descargar en CSV.
-3. **Giro del rotor en el tiempo:** Euler y RK4 resuelven la ecuación del rotor. Con el control "instante" se elige el momento que muestran el dibujo (el rotor gira a la velocidad calculada), los medidores y la cadena viento → rotor → eje → generador → red.
-4. **Precisión de los métodos:** tabla de errores, orden observado y gráfica de convergencia.
+| Archivo | Qué contiene |
+|---|---|
+| `modelo.py` | Física: potencia del viento, disco actuador (momentum), Cp(λ), torques, solución exacta |
+| `metodos.py` | Euler y RK4 programados a mano (sin SciPy), errores y orden de convergencia |
+| `graficos.py` | Dibujo animado (tubo de corriente y rotor) y gráficas sincronizadas, en HTML/JavaScript |
+| `app.py` | Interfaz: parámetros, dibujo, gráficas y tabla de errores |
+| `.streamlit/config.toml` | Colores de la interfaz |
