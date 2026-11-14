@@ -94,9 +94,9 @@ with st.sidebar:
     st.slider("Duración de la simulación (s)", 10.0, 60.0, step=5.0, key="t_fin")
 
      st.subheader("Valores del caso de estudio")
-        st.number_input("Mejor coeficiente de potencia de las aspas, Cp,máx", 0.10, 0.59, step=0.01, key="cp_max")
-        st.number_input("Razón de punta óptima, λ*", 3.0, 12.0, step=0.5, key="lam_opt")
-        st.number_input("Fricción de los rodamientos, b (N·m·s)", 0.0, 5.0, step=0.01, key="b")
+      st.number_input("Mejor coeficiente de potencia de las aspas, Cp,máx", 0.10, 0.59, step=0.01, key="cp_max")
+      st.number_input("Razón de punta óptima, λ*", 3.0, 12.0, step=0.5, key="lam_opt")
+      st.number_input("Fricción de los rodamientos, b (N·m·s)", 0.0, 5.0, step=0.01, key="b")
     st.button("↺ Volver al caso de estudio", on_click=volver_al_caso_de_estudio, width="stretch")
 
 s = st.session_state
@@ -117,7 +117,7 @@ tau_min = min(m.equilibrio(p, p["v"])[1], m.equilibrio(p, p["v2"])[1])
 ref = "Exacta" if m.tiene_exacta(p) else "Referencia (RK4 con h = 0.001 s)"
 
 # ====================================================================== página
-st.title("🌬️ ¿Cuánta energía le saca una turbina al viento?")
+st.title("Energía eólica y conservación del momentum")
 st.markdown(
     "La turbina **frena el aire y le quita momentum**; por la tercera ley de Newton, el aire empuja "
     "las aspas y las hace girar. Este simulador resuelve la ecuación del giro del rotor\n\n"
@@ -125,8 +125,7 @@ st.markdown(
     "\n\nde forma **exacta** y con los métodos numéricos de **Euler** y **Runge–Kutta 4 (RK4)**.")
 st.info("**Cómo usarlo:** 1) cambie los parámetros de la izquierda; 2) presione **▶ Reproducir** "
         "para ver el rotor arrancar en tiempo real; 3) compare la solución exacta con Euler y RK4 en las gráficas. "
-        "Los valores iniciales son los del caso de estudio del documento. La guía de escenarios E1–E5 está "
-        "en `GUIA_ESCENARIOS.md`.", icon="👉")
+        "Los valores iniciales son los del caso de estudio.")
 
 if tipo != "constante":
     st.caption("Con cambio de viento, los valores de abajo son los del final de la simulación.")
