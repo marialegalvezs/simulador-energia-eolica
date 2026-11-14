@@ -61,9 +61,9 @@ _PLANTILLA = r"""
 </style></head><body>
 
 <div class="caja">
-  <p class="tit">1. La situación física</p>
-  <p class="sub">Izquierda: el aire (puntos azules) llega con v₁, se frena al pasar por el rotor y sale más lento con v₄;
-  por eso el tubo de aire se ensancha. Derecha: el rotor visto de frente gira con la ω calculada.</p>
+  <p class="tit">SITUACIÓN FÍSICA</p>
+  <p class="sub">El aire llega con v₁, se frena al pasar por el rotor y sale más lento con v₄;
+  por eso el tubo de aire se ensancha. El rotor visto de frente gira con la ω calculada.</p>
   <canvas id="escena" height="__ALTO__"></canvas>
   <div id="tiempo">
   <div class="controles" style="margin-top:6px">
@@ -71,7 +71,6 @@ _PLANTILLA = r"""
     <button id="reini">↺ Desde t = 0</button>
     <span>t =</span><input id="barra" type="range" min="0" max="1000" value="0">
     <span id="treloj" style="min-width:64px;font-weight:600">0.0 s</span>
-    <span style="color:#6b6e72;font-size:12.5px">tiempo real</span>
   </div>
   <div class="datos">
     <div class="dato"><span>Viento v</span><b id="d_v">–</b></div>
@@ -87,7 +86,7 @@ _PLANTILLA = r"""
 
 <div class="fila" id="graficas">
   <div class="caja">
-    <p class="tit">2. Evolución numérica: velocidad angular ω(t)</p>
+    <p class="tit">2. EVOLUCIÓN NÚMERICA: velocidad angular ω(t)</p>
     <p class="sub" id="sub1">Línea negra: solución exacta. Puntos: Euler y RK4 con el paso h elegido.</p>
     <canvas id="g1" height="250"></canvas>
     <div class="ley"><span><i style="background:var(--exacta)"></i><span id="nref">Exacta</span></span>
@@ -95,7 +94,7 @@ _PLANTILLA = r"""
       <span><i style="background:#999;height:1px;border-top:1px dashed #999"></i>ω∞ (equilibrio)</span></div>
   </div>
   <div class="caja">
-    <p class="tit">3. Evolución numérica: potencia P(t)</p>
+    <p class="tit">EVOLUCIÓN NÚMERICA: potencia P(t)</p>
     <p class="sub">Cuánta potencia trae el viento, el máximo posible (Betz) y la potencia entregada por el generador.</p>
     <canvas id="g2" height="250"></canvas>
     <div class="ley"><span><i style="background:#a3a6a9"></i>Viento ½ρAv³</span>
