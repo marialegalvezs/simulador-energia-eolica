@@ -76,6 +76,8 @@ with st.sidebar:
         st.slider("Aumento del viento en la ráfaga (m/s)", 1.0, 8.0, step=0.5, key="dv")
     if st.session_state.cambio != "Ninguno":
         st.slider("Instante del cambio (s)", 2.0, 50.0, step=1.0, key="t_cambio")
+    st.number_input("Densidad del aire, ρ (kg/m³)", 0.80, 1.40, step=0.005, format="%.3f", key="rho",
+                        help="1.225 a nivel del mar; cerca de 0.91 en Bogotá.")
     st.radio("Densidad del aire, ρ (kg/m³)", [1.225, 0.91], key="rho", horizontal=True,
              format_func=lambda r: "1.225 (nivel del mar)" if r == 1.225 else "0.91 (Bogotá)")
 
