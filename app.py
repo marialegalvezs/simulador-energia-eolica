@@ -122,9 +122,9 @@ st.markdown(
     "La turbina **frena el aire y le quita momentum**; por la tercera ley de Newton, el aire empuja "
     "las aspas y las hace girar. Este simulador resuelve la ecuación del giro del rotor\n\n"
     r"$\qquad J\,\dfrac{d\omega}{dt}=T_{\text{viento}}-T_{\text{generador}}-b\,\omega$"
-    "\n\nde forma **exacta** y con los métodos numéricos de **Euler** y **Runge–Kutta 4 **.")
-st.info("**Cómo usarlo:** \n1) cambie los parámetros de la izquierda; \n2) presione **▶ Reproducir** "
-        "para ver el rotor arrancar en tiempo real; \n3) compare la solución exacta con Euler y RK4 en las gráficas. "
+    "\n\nde forma **exacta** y con los métodos numéricos de **Euler** y **Runge–Kutta 4**.")
+st.info("**Cómo usarlo:** \n1) Cambie los parámetros de la izquierda. \n2) Presione **▶ Reproducir** "
+        "para ver el rotor arrancar en tiempo real; \n3) Compare la solución exacta con Euler y RK4 en las gráficas. "
         "Los valores iniciales son los del caso de estudio.")
 
 if tipo != "constante":
