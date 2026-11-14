@@ -86,7 +86,7 @@ _PLANTILLA = r"""
 
 <div class="fila" id="graficas">
   <div class="caja">
-    <p class="tit">2. EVOLUCIÓN NÚMERICA: velocidad angular ω(t)</p>
+    <p class="tit">EVOLUCIÓN NÚMERICA: velocidad angular ω(t)</p>
     <p class="sub" id="sub1">Línea negra: solución exacta. Puntos: Euler y RK4 con el paso h elegido.</p>
     <canvas id="g1" height="250"></canvas>
     <div class="ley"><span><i style="background:var(--exacta)"></i><span id="nref">Exacta</span></span>
