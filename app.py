@@ -146,7 +146,7 @@ elif h > 2 * tau_min:
 mostrar(g.escena(t, w, est, t_eu, w_eu, t_rk, w_rk, p["R"], R_MAX, h, ref=ref), 950)
 
 # ---------------------------------------------------------------- comparación en un instante
-st.subheader("4. ¿Qué tan cerca están Euler y RK4 de la solución exacta?")
+st.subheader("¿Qué tan cerca están Euler y RK4 de la solución exacta?")
 t_def = max(h, round(4.0 / h) * h)
 t_comp = st.slider("Instante en que se comparan", h, float(t_fin), float(min(t_def, t_fin)), h)
 i = int(round(t_comp / h))
@@ -175,7 +175,7 @@ st.dataframe(df.style.format({"h (s)": "{:g}", "Eₐ Euler": "{:.3g}", "Eᵣ Eul
 st.caption("Al dividir h entre 2, el error de Euler se divide entre 2 (orden 1) y el de RK4 entre 16 (orden 4).")
 
 # ---------------------------------------------------------------- momentum: ideal frente a real
-st.subheader("5. Momentum: turbina ideal (Betz) frente a una turbina real")
+st.subheader("Momentum: turbina ideal (Betz) frente a una turbina real")
 modo = st.radio("Qué turbina ver", ["Ideal: elegir cuánto se frena el aire (factor a)",
                                     "Real: Vestas V52 (R = 26 m)"], horizontal=True, label_visibility="collapsed")
 if modo.startswith("Ideal"):
