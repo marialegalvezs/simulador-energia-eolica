@@ -66,13 +66,13 @@ def kg_optimo(p, v):
 def viento(t, p):
     """Velocidad del viento v(t) [m/s].
     tipo "constante": v.   tipo "escalon": v hasta t_cambio y luego v2.
-    tipo "rafaga": v + dv·exp(-((t - t_cambio)/2 s)²), una ráfaga que dura unos 4 s."""
+    tipo "rafaga": v + dv·exp(-((t - t_cambio)/3 s)²), una ráfaga que dura unos 6 s."""
     t = np.asarray(t, dtype=float)
     tipo = p.get("tipo", "constante")
     if tipo == "escalon":
         return np.where(t < p["t_cambio"], p["v"], p["v2"])
     if tipo == "rafaga":
-        return p["v"] + p["dv"] * np.exp(-((t - p["t_cambio"]) / 2.0) ** 2)
+        return p["v"] + p["dv"] * np.exp(-((t - p["t_cambio"]) / 3.0) ** 2)
     return np.full_like(t, p["v"])
 
 

@@ -24,10 +24,10 @@ plt.rcParams.update({"font.size": 10, "axes.grid": True, "grid.alpha": 0.25, "ax
 
 R_MAX = 5.0
 PASOS_TABLA = [1.0, 0.5, 0.25, 0.125, 0.0625]                # los pasos de la tabla de errores del documento
-PASOS = sorted(PASOS_TABLA + [2.0, 6.0])                      # 6 s > 2τ: para ver que Euler diverge
-KG_CASO = m.kg_optimo(dict(m.CASO_ESTUDIO), 10.0)            # ≈ 2.777 N·m·s (rotor en λ* con 10 m/s)
+PASOS = sorted(PASOS_TABLA + [2.0, 5.0, 6.0])                 # 5 s oscila, 6 s > 2τ diverge (Euler)
+KG_CASO = 2.777                                               # N·m·s: deja el rotor en λ* con 10 m/s
 POR_DEFECTO = dict(v=10.0, cambio="Ninguno", v2=10.0, dv=4.0, t_cambio=10.0,
-                   R=2.0, J=15.0, kg=KG_CASO, h=1.0, t_fin=30.0,
+                   R=2.0, J=15.0, kg=KG_CASO, h=0.5, t_fin=30.0,
                    rho=1.225, cp_max=0.45, lam_opt=7.0, b=0.05, omega0=0.0)
 for clave, valor in POR_DEFECTO.items():
     st.session_state.setdefault(clave, valor)
