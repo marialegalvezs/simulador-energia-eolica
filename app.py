@@ -122,9 +122,9 @@ st.markdown(
     "La turbina **frena el aire y le quita momentum**; por la tercera ley de Newton, el aire empuja "
     "las aspas y las hace girar. Este simulador resuelve la ecuación del giro del rotor\n\n"
     r"$\qquad J\,\dfrac{d\omega}{dt}=T_{\text{viento}}-T_{\text{generador}}-b\,\omega$"
-    "\n\nde forma **exacta** y con los métodos numéricos de **Euler** y **Runge–Kutta 4 (RK4)**.")
-st.info("**Cómo usarlo:** 1) cambie los parámetros de la izquierda; 2) presione **▶ Reproducir** "
-        "para ver el rotor arrancar en tiempo real; 3) compare la solución exacta con Euler y RK4 en las gráficas. "
+    "\n\nde forma **exacta** y con los métodos numéricos de **Euler** y **Runge–Kutta 4 **.")
+st.info("**Cómo usarlo:** \n1) cambie los parámetros de la izquierda; \n2) presione **▶ Reproducir** "
+        "para ver el rotor arrancar en tiempo real; \n3) compare la solución exacta con Euler y RK4 en las gráficas. "
         "Los valores iniciales son los del caso de estudio.")
 
 if tipo != "constante":
@@ -148,7 +148,7 @@ mostrar(g.escena(t, w, est, t_eu, w_eu, t_rk, w_rk, p["R"], R_MAX, h, ref=ref), 
 # ---------------------------------------------------------------- comparación en un instante
 st.subheader("4. ¿Qué tan cerca están Euler y RK4 de la solución exacta?")
 t_def = max(h, round(4.0 / h) * h)
-t_comp = st.slider("Instante en que se comparan (s)", h, float(t_fin), float(min(t_def, t_fin)), h)
+t_comp = st.slider("Instante en que se comparan", h, float(t_fin), float(min(t_def, t_fin)), h)
 i = int(round(t_comp / h))
 w_ex = float(m.omega_referencia(np.array([t_comp]), p)[0])
 fila = lambda nombre, val: (nombre, val, abs(val - w_ex), abs(val - w_ex) / abs(w_ex) * 100 if w_ex else np.nan)
@@ -199,7 +199,7 @@ else:
     q = 0.5 * p["rho"] * A * v1 ** 2
     F_d, Fb_d, Pv = CT * q, 8 / 9 * q, q * v1
     Pb_d, w_d, Rmax_d = 16 / 27 * Pv, 7 * v1 / R_d, R_d
-    st.caption(f"Densidad ρ = {p['rho']} kg/m³ (se cambia a la izquierda). Datos del fabricante vía PyWake.")
+    st.caption(f"Densidad ρ = {p['rho']} kg/m³.")
 dos = lambda x: np.full(2, float(x))
 est_d = dict(v=dos(v1), lam=dos(7), cp=dos(P_d / Pv), a=dos(a_d), vd=dos(v1 * (1 - a_d)), v4=dos(v1 * (1 - 2 * a_d)),
              F=dos(F_d), F_betz=dos(Fb_d), P_viento=dos(Pv), P_betz=dos(Pb_d), P_aero=dos(P_d), P_gen=dos(P_d))
