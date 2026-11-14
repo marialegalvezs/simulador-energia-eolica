@@ -65,7 +65,7 @@ with st.sidebar:
     st.header("Parámetros")
     st.caption("Mueva un control y observe cómo cambian el dibujo y las gráficas.")
 
-    st.subheader("1. El viento")
+    st.subheader("El viento")
     st.slider("Velocidad del viento, v (m/s)", 3.0, 20.0, step=0.5, key="v",
               help="Qué tan rápido llega el aire a la turbina.")
     st.radio("¿Cambia el viento?", ["Ninguno", "Escalón", "Ráfaga"], key="cambio", horizontal=True,
@@ -79,7 +79,7 @@ with st.sidebar:
     st.number_input("Densidad del aire, ρ (kg/m³)", 0.80, 1.40, step=0.005, format="%.3f", key="rho",
                         help="1.225 a nivel del mar; cerca de 0.91 en Bogotá.")
 
-    st.subheader("2. La turbina")
+    st.subheader("La turbina")
     st.slider("Radio de las aspas, R (m)", 1.0, R_MAX, step=0.1, key="R",
               help="Aspas más largas barren más área A = πR² y reciben más viento.")
     st.slider("Momento de inercia del rotor, J (kg·m²)", 1.0, 200.0, step=1.0, key="J",
@@ -88,16 +88,16 @@ with st.sidebar:
                     help="Qué tanto frena el generador al rotor. 2.777 deja el rotor en su punto óptimo con 10 m/s.")
     st.slider("Velocidad angular inicial, ω₀ (rad/s)", 0.0, 60.0, step=1.0, key="omega0")
 
-    st.subheader("3. El cálculo numérico")
+    st.subheader("El cálculo numérico")
     st.select_slider("Paso de tiempo de Euler y RK4, h (s)", PASOS, key="h", format_func=lambda x: f"{x:g}",
                      help="Cada cuántos segundos calculan los métodos un nuevo valor de ω.")
     st.slider("Duración de la simulación (s)", 10.0, 60.0, step=5.0, key="t_fin")
 
-    with st.expander("Otros valores (fijos en el caso de estudio)"):
+     st.subheader("Valores del caso de estudio")
         st.number_input("Mejor coeficiente de potencia de las aspas, Cp,máx", 0.10, 0.59, step=0.01, key="cp_max")
         st.number_input("Razón de punta óptima, λ*", 3.0, 12.0, step=0.5, key="lam_opt")
         st.number_input("Fricción de los rodamientos, b (N·m·s)", 0.0, 5.0, step=0.01, key="b")
-    st.button("↺ Volver al caso de estudio del documento", on_click=volver_al_caso_de_estudio, width="stretch")
+    st.button("↺ Volver al caso de estudio", on_click=volver_al_caso_de_estudio, width="stretch")
 
 s = st.session_state
 tipo = {"Ninguno": "constante", "Escalón": "escalon", "Ráfaga": "rafaga"}[s.cambio]
