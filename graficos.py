@@ -13,7 +13,9 @@ def _lista(x, dec=5):
     return [round(float(v), dec) for v in np.asarray(x, dtype=float)]
 
 
-def escena(t, w, est, t_eu, w_eu, t_rk, w_rk, R, R_max, h):
+def escena(t, w, est, t_eu, w_eu, t_rk, w_rk, R, R_max, h, modo="rotor", ref="Exacta",
+           euler=True, rk4=True, texto_barra="Potencia entregada", alto_escena=330):
+    """modo="rotor": dibujo + reproducción + gráficas. modo="tubo": solo el dibujo (valores fijos)."""
     datos = dict(
         t=_lista(t, 4), w=_lista(w), v=_lista(est["v"], 3), lam=_lista(est["lam"], 3),
         cp=_lista(est["cp"], 4), a=_lista(est["a"], 4), vd=_lista(est["vd"], 3),
@@ -21,9 +23,15 @@ def escena(t, w, est, t_eu, w_eu, t_rk, w_rk, R, R_max, h):
         Pv=_lista(est["P_viento"], 1), Pb=_lista(est["P_betz"], 1),
         Pa=_lista(est["P_aero"], 1), Pg=_lista(est["P_gen"], 1),
         teu=_lista(t_eu, 4), weu=_lista(w_eu), trk=_lista(t_rk, 4), wrk=_lista(w_rk),
-        R=float(R), Rmax=float(R_max), h=float(h),
+        R=float(R), Rmax=float(R_max), h=float(h), modo=modo, ref=ref, euler=bool(euler), rk4=bool(rk4),
+        barra=texto_barra,
     )
-    return _PLANTILLA.replace("__DATOS__", json.dumps(datos))
+    html = _PLANTILLA.replace("__DATOS__", json.dumps(datos)).replace("__ALTO__", str(int(alto_escena)))
+    if modo == "tubo":
+        html = html.replace('<p class="tit">1. La situación física</p>', '<p class="tit">Situación física: el tubo de corriente</p>')
+        html = html.replace('<div id="tiempo">', '<div id="tiempo" style="display:none">')
+        html = html.replace('<div class="fila" id="graficas">', '<div class="fila" id="graficas" style="display:none">')
+    return html
 
 
 _PLANTILLA = r"""
@@ -56,14 +64,14 @@ _PLANTILLA = r"""
   <p class="tit">1. La situación física</p>
   <p class="sub">Izquierda: el aire (puntos azules) llega con v₁, se frena al pasar por el rotor y sale más lento con v₄;
   por eso el tubo de aire se ensancha. Derecha: el rotor visto de frente gira con la ω calculada.</p>
-  <canvas id="escena" height="330"></canvas>
+  <canvas id="escena" height="__ALTO__"></canvas>
+  <div id="tiempo">
   <div class="controles" style="margin-top:6px">
     <button id="play" class="prim">▶ Reproducir</button>
     <button id="reini">↺ Desde t = 0</button>
     <span>t =</span><input id="barra" type="range" min="0" max="1000" value="0">
     <span id="treloj" style="min-width:64px;font-weight:600">0.0 s</span>
-    <span>velocidad</span>
-    <select id="vel"><option value="1">×1 (tiempo real)</option><option value="2" selected>×2</option><option value="5">×5</option></select>
+    <span style="color:#6b6e72;font-size:12.5px">tiempo real</span>
   </div>
   <div class="datos">
     <div class="dato"><span>Viento v</span><b id="d_v">–</b></div>
@@ -71,27 +79,28 @@ _PLANTILLA = r"""
     <div class="dato"><span>Razón de punta λ</span><b id="d_l">–</b></div>
     <div class="dato"><span>Coef. de potencia Cp</span><b id="d_cp">–</b></div>
     <div class="dato"><span>Empuje sobre el rotor F</span><b id="d_F">–</b></div>
-    <div class="dato"><span>Potencia del generador</span><b id="d_P">–</b></div>
+    <div class="dato"><span>Potencia entregada</span><b id="d_P">–</b></div>
   </div>
   <div class="estado" id="estado">–</div>
+  </div>
 </div>
 
-<div class="fila">
+<div class="fila" id="graficas">
   <div class="caja">
     <p class="tit">2. Evolución numérica: velocidad angular ω(t)</p>
-    <p class="sub">Línea negra: solución exacta. Puntos: Euler y RK4 con el paso h elegido.</p>
+    <p class="sub" id="sub1">Línea negra: solución exacta. Puntos: Euler y RK4 con el paso h elegido.</p>
     <canvas id="g1" height="250"></canvas>
-    <div class="ley"><span><i style="background:var(--exacta)"></i>Exacta</span>
-      <span><i style="background:var(--euler)"></i>Euler</span><span><i style="background:var(--rk4)"></i>RK4</span>
+    <div class="ley"><span><i style="background:var(--exacta)"></i><span id="nref">Exacta</span></span>
+      <span id="lE"><i style="background:var(--euler)"></i>Euler</span><span id="lR"><i style="background:var(--rk4)"></i>RK4</span>
       <span><i style="background:#999;height:1px;border-top:1px dashed #999"></i>ω∞ (equilibrio)</span></div>
   </div>
   <div class="caja">
     <p class="tit">3. Evolución numérica: potencia P(t)</p>
-    <p class="sub">Cuánta potencia trae el viento, el máximo posible (Betz) y lo que entrega el generador.</p>
+    <p class="sub">Cuánta potencia trae el viento, el máximo posible (Betz) y la potencia entregada por el generador.</p>
     <canvas id="g2" height="250"></canvas>
     <div class="ley"><span><i style="background:#a3a6a9"></i>Viento ½ρAv³</span>
       <span><i style="background:var(--betz)"></i>Límite de Betz (59.3 %)</span>
-      <span><i style="background:var(--gen)"></i>Generador k_g ω²</span></div>
+      <span><i style="background:var(--gen)"></i>Potencia entregada k_g ω²</span></div>
   </div>
 </div>
 
@@ -120,7 +129,7 @@ let theta = 0;
 const vmaxAll = Math.max(...D.v);
 const wmax = Math.max(1e-6, ...D.w);
 
-function escena(t, dtReal, vel){
+function escena(t, dtReal){
   const [x, W, H] = prep(cE);
   x.clearRect(0,0,W,H);
   const v = interp(D.v,t), a = interp(D.a,t), w = interp(D.w,t), F = interp(D.F,t), Fb = interp(D.Fb,t);
@@ -141,7 +150,7 @@ function escena(t, dtReal, vel){
   const k = 130/Math.max(vmaxAll,1);           // px/s por m/s
   x.fillStyle='#3a8fa3';
   for(const p of parts){ const px = 10 + p.x*(WL-20); const X=(px-x0)/pxm;
-    p.x += u(X)*v*k*dtReal*vel/4/(WL-20); if(p.x>1){p.x-=1; p.f=(Math.random()*2-1)*0.92;}
+    p.x += u(X)*v*k*dtReal/2/(WL-20); if(p.x>1){p.x-=1; p.f=(Math.random()*2-1)*0.92;}
     x.beginPath(); x.arc(px, cy + p.f*rt(X), 2.1, 0, 7); x.fill(); }
   // torre y rotor lateral
   x.fillStyle='#9a9c9f'; x.fillRect(x0-3, cy, 6, H-38-cy);
@@ -158,13 +167,13 @@ function escena(t, dtReal, vel){
     flecha(x, X0, yb, val*kv, '#2b2d2f', 2); x.fillStyle='#2b2d2f'; x.fillText(txt+fmt(val,1)+' m/s', X0, yb-9); });
   x.fillStyle='#6b6e72'; x.font='12px sans-serif';
   x.fillText('Viento →', 14, 22); x.fillText('R = '+fmt(D.R,1)+' m', x0+8, cy+Rpx+14);
-  x.fillText('a = '+fmt(a,3)+' (cuánto se frena el aire)', WL-215, 22);
+  x.fillText('a = '+fmt(a,3)+' (cuánto se frena el aire)', 14, 40);
   // separador
   x.strokeStyle='#e3e3de'; x.lineWidth=1; x.beginPath(); x.moveTo(WL,10); x.lineTo(WL,H-44); x.stroke();
   // --- vista frontal
   const xf = WL + (W-WL)/2, cf = 140;
-  const lento = Math.max(1, Math.ceil(wmax*vel/5));    // cámara lenta para que el giro se vea
-  theta += w*dtReal*vel/lento;
+  const lento = Math.max(1, Math.ceil(wmax/40));   // solo si gira tan rápido que la pantalla no alcanza a mostrarlo
+  theta += w*dtReal/lento;
   x.fillStyle='#9a9c9f'; x.fillRect(xf-3, cf, 6, H-66-cf);
   x.strokeStyle='rgba(43,45,47,0.12)'; x.setLineDash([3,4]); x.beginPath(); x.arc(xf,cf,Rpx,0,7); x.stroke(); x.setLineDash([]);
   for(let b=0;b<3;b++){ const ang = theta + b*2*Math.PI/3;
@@ -172,9 +181,9 @@ function escena(t, dtReal, vel){
     x.beginPath(); x.moveTo(0,-4); x.quadraticCurveTo(Rpx*0.35,-9,Rpx,-2); x.lineTo(Rpx,2); x.quadraticCurveTo(Rpx*0.35,5,0,4); x.fill(); x.restore(); }
   x.fillStyle='#2f5d62'; x.beginPath(); x.arc(xf,cf,7,0,7); x.fill();
   x.fillStyle='#2b2d2f'; x.font='600 13px sans-serif'; x.textAlign='center';
-  x.fillText('ω = '+fmt(w,1)+' rad/s  ('+fmt(w*60/(2*Math.PI),0)+' rpm)', xf, 22);
+  x.fillText(D.modo==='tubo' ? 'Rotor visto de frente' : 'ω = '+fmt(w,1)+' rad/s  ('+fmt(w*60/(2*Math.PI),0)+' rpm)', xf, 22);
   x.fillStyle='#6b6e72'; x.font='11.5px sans-serif';
-  x.fillText(lento>1 ? 'giro mostrado '+lento+' veces más lento' : 'giro en tiempo real', xf, 38);
+  x.fillText(D.modo==='tubo' ? '(giro ilustrativo)' : (lento>1 ? 'giro mostrado '+lento+' veces más lento' : 'giro en tiempo real'), xf, 38);
   // generador: barra de potencia
   const Pg = interp(D.Pg,t), Pv = interp(D.Pv,t), Pb = interp(D.Pb,t);
   const bx = WL+16, bw = W-WL-32, by = H-30;
@@ -182,7 +191,7 @@ function escena(t, dtReal, vel){
   x.fillStyle='#2f5d62'; x.fillRect(bx,by,bw*Math.max(0,Math.min(1,Pg/Pv)),10);
   x.strokeStyle='#b5543c'; x.lineWidth=2; x.beginPath(); x.moveTo(bx+bw*Pb/Pv,by-4); x.lineTo(bx+bw*Pb/Pv,by+14); x.stroke();
   x.fillStyle='#2b2d2f'; x.font='12px sans-serif';
-  x.fillText('Generador: '+potTxt(Pg)+' = '+fmt(100*Pg/Pv,0)+' % del viento', bx, by-6);
+  x.fillText(D.barra+': '+potTxt(Pg)+' = '+fmt(100*Pg/Pv,0)+' % del viento', bx, by-6);
   x.fillStyle='#b5543c'; x.fillText('límite de Betz', bx+bw*Pb/Pv+4, by+21);
 }
 
@@ -220,8 +229,8 @@ function grafica1(t){
   const c = $('g1'); const [x, W, H] = prep(c); x.clearRect(0,0,W,H);
   const A = ejes(x, W, H, TF, 0, wTop, 'ω (rad/s)');
   linea(x, A, [0,TF], [winf_final,winf_final], '#999', 1, [5,4]);
-  const fueraE = puntos(x, A, D.teu, D.weu, '#c0603f', -0.05*wTop, wTop);
-  const fueraR = puntos(x, A, D.trk, D.wrk, '#3a6ea5', -0.05*wTop, wTop);
+  const fueraE = D.euler && puntos(x, A, D.teu, D.weu, '#c0603f', -0.05*wTop, wTop);
+  const fueraR = D.rk4 && puntos(x, A, D.trk, D.wrk, '#3a6ea5', -0.05*wTop, wTop);
   linea(x, A, D.t, D.w, '#2b2d2f', 2);
   const fuera = [fueraE?'Euler':'', fueraR?'RK4':''].filter(Boolean).join(' y ');
   if(fuera){ x.fillStyle='#c0603f'; x.font='600 12px sans-serif'; x.fillText(fuera+' se sale de la gráfica: es inestable con este paso h', A.m.l+8, A.m.t+14); }
@@ -260,10 +269,10 @@ function tablero(t){
 // ------------------------------------------------------------------ reproducción
 let t = 0, corriendo = true, ultimo = null;
 const barra = $('barra'), bPlay = $('play');
-function pintar(dt){ const vel = +$('vel').value; escena(t, dt, vel); grafica1(t); grafica2(t); tablero(t); barra.value = Math.round(1000*t/TF); }
+function pintar(dt){ escena(t, dt); if(D.modo==='rotor'){ grafica1(t); grafica2(t); tablero(t); barra.value = Math.round(1000*t/TF); } }
 function cuadro(ts){
   const dt = ultimo===null ? 0 : Math.min(0.05,(ts-ultimo)/1000); ultimo = ts;
-  if(corriendo){ t += dt*(+$('vel').value); if(t>=TF){ t=TF; corriendo=false; bPlay.textContent='▶ Reproducir'; } }
+  if(corriendo && D.modo==='rotor'){ t += dt; if(t>=TF){ t=TF; corriendo=false; bPlay.textContent='▶ Reproducir'; } }
   pintar(dt); requestAnimationFrame(cuadro);
 }
 bPlay.onclick = () => { if(t>=TF) t=0; corriendo=!corriendo; bPlay.textContent = corriendo ? '⏸ Pausa' : '▶ Reproducir'; };
@@ -271,6 +280,12 @@ $('reini').onclick = () => { t=0; corriendo=true; bPlay.textContent='⏸ Pausa';
 barra.oninput = () => { t = barra.value/1000*TF; corriendo=false; bPlay.textContent='▶ Reproducir'; };
 window.irA = s => { t = s; corriendo=false; bPlay.textContent='▶ Reproducir'; };
 bPlay.textContent='⏸ Pausa';
+$('nref').textContent = D.ref;
+if(!D.euler) $('lE').style.display='none';
+if(!D.rk4) $('lR').style.display='none';
+const metodos = [D.euler?'Euler':'', D.rk4?'RK4':''].filter(Boolean).join(' y ');
+$('sub1').textContent = 'Línea negra: ' + D.ref.toLowerCase() + '. Puntos: ' + (metodos||'ningún método') + ' con h = ' + fmt(D.h, D.h<0.1?4:(D.h<1?3:0)).replace(/0+$/,'').replace(/,$/,'') + ' s.';
+if(D.modo!=='rotor'){ corriendo=false; }
 requestAnimationFrame(cuadro);
 </script></body></html>
 """

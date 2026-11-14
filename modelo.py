@@ -64,10 +64,15 @@ def kg_optimo(p, v):
 
 
 def viento(t, p):
-    """Velocidad del viento: constante, o con un cambio brusco (ráfaga) en t_cambio."""
+    """Velocidad del viento v(t) [m/s].
+    tipo "constante": v.   tipo "escalon": v hasta t_cambio y luego v2.
+    tipo "rafaga": v + dv·exp(-((t - t_cambio)/2 s)²), una ráfaga que dura unos 4 s."""
     t = np.asarray(t, dtype=float)
-    if p.get("rafaga"):
+    tipo = p.get("tipo", "constante")
+    if tipo == "escalon":
         return np.where(t < p["t_cambio"], p["v"], p["v2"])
+    if tipo == "rafaga":
+        return p["v"] + p["dv"] * np.exp(-((t - p["t_cambio"]) / 2.0) ** 2)
     return np.full_like(t, p["v"])
 
 
@@ -84,17 +89,32 @@ def equilibrio(p, v):
     return alpha / K, p["J"] / K
 
 
+def tiene_exacta(p):
+    return p.get("tipo", "constante") in ("constante", "escalon")
+
+
 def omega_exacta(t, p):
-    """Solución exacta ω(t) = ω∞ + (ω0 - ω∞) e^{-t/τ}; con ráfaga se aplica por tramos."""
+    """Solución exacta ω(t) = ω∞ + (ω0 - ω∞) e^{-t/τ}; con escalón se aplica por tramos.
+    (Para la ráfaga no hay solución exacta: se usa una referencia numérica, ver omega_referencia.)"""
     t = np.asarray(t, dtype=float)
     w_inf, tau = equilibrio(p, p["v"])
     w = w_inf + (p["omega0"] - w_inf) * np.exp(-t / tau)
-    if p.get("rafaga"):
+    if p.get("tipo") == "escalon":
         tc = p["t_cambio"]
         wc = w_inf + (p["omega0"] - w_inf) * np.exp(-tc / tau)
         w2, tau2 = equilibrio(p, p["v2"])
         w = np.where(t < tc, w, w2 + (wc - w2) * np.exp(-(t - tc) / tau2))
     return w
+
+
+def omega_referencia(t, p, h_ref=0.001):
+    """Exacta si existe; si no, RK4 con un paso muy pequeño (h = 0.001 s) interpolado en t."""
+    if tiene_exacta(p):
+        return omega_exacta(t, p)
+    from metodos import rk4
+    t = np.asarray(t, dtype=float)
+    tt, ww = rk4(lambda s, w: f_rotor(s, w, p), 0.0, p["omega0"], h_ref, float(np.max(t)))
+    return np.interp(t, tt, ww)
 
 
 def estado(t, omega, p):
