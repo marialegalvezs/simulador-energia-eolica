@@ -93,11 +93,11 @@ with st.sidebar:
                      help="Cada cuántos segundos calculan los métodos un nuevo valor de ω.")
     st.slider("Duración de la simulación (s)", 10.0, 60.0, step=5.0, key="t_fin")
 
-       st.subheader("Valores del caso de estudio")
-        st.number_input("Mejor coeficiente de potencia de las aspas, Cp,máx", 0.10, 0.59, step=0.01, key="cp_max")
-        st.number_input("Razón de punta óptima, λ*", 3.0, 12.0, step=0.5, key="lam_opt")
-        st.number_input("Fricción de los rodamientos, b (N·m·s)", 0.0, 5.0, step=0.01, key="b")
-      st.button("↺ Volver al caso de estudio", on_click=volver_al_caso_de_estudio, width="stretch")
+    st.subheader("Valores del caso de estudio")
+    st.number_input("Mejor coeficiente de potencia de las aspas, Cp,máx", 0.10, 0.59, step=0.01, key="cp_max")
+    st.number_input("Razón de punta óptima, λ*", 3.0, 12.0, step=0.5, key="lam_opt")
+    st.number_input("Fricción de los rodamientos, b (N·m·s)", 0.0, 5.0, step=0.01, key="b")
+    st.button("↺ Volver al caso de estudio", on_click=volver_al_caso_de_estudio, width="stretch")
 
 s = st.session_state
 tipo = {"Ninguno": "constante", "Escalón": "escalon", "Ráfaga": "rafaga"}[s.cambio]
