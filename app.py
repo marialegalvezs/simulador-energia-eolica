@@ -91,12 +91,13 @@ tau_min = min(tau, m.equilibrio(p, p["v"])[1])
 A = m.area(p["R"])
 
 # ====================================================================== página
-st.title("🌬️ ¿Cuánta energía le saca una turbina al viento?")
+st.title("Energía eólica y conservación del momentum")
 st.markdown(
     "La turbina **frena el aire y le quita momentum**; por la tercera ley de Newton, el aire empuja "
     "las aspas y las hace girar. Este simulador resuelve la ecuación del giro del rotor\n\n"
     r"$\qquad J\,\dfrac{d\omega}{dt}=T_{\text{viento}}-T_{\text{generador}}-b\,\omega$"
     "\n\nde forma **exacta** y con los métodos numéricos de **Euler** y **Runge–Kutta 4 (RK4)**.")
+El simulador sirve para ver la situación física y su evolución.
 st.info("**Cómo usarlo:** 1) cambie los parámetros de la izquierda; 2) presione **▶ Reproducir** "
         "para ver el rotor arrancar; 3) compare la solución exacta con Euler y RK4 en las gráficas. "
         "Los valores iniciales son los del caso de estudio del documento.", icon="👉")
